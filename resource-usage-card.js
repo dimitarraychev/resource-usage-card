@@ -1,12 +1,15 @@
 /*!
  * Resource Usage Card
  * A single-row Lovelace card for CPU or RAM utilization based on the Room Comfort Card design.
+ *
+ * Shows up under "Community" in the card picker's "By entity" tab (Home Assistant 2026.6+)
+ * via `getEntitySuggestion` on the window.customCards entry.
  */
 
 const CARD_TAG = "resource-usage-card";
 const EDITOR_TAG = "resource-usage-card-editor";
 const CARD_NAME = "Resource Usage Card";
-const CARD_VERSION = "0.1.2-beta";
+const CARD_VERSION = "0.1.3-beta";
 
 // Fallback/Default colors used when no explicit color or zone is provided.
 const COLOR_MAP = {
@@ -65,6 +68,30 @@ const ENTITY_ID = /^[a-z0-9_]+\.[a-z0-9_]+$/;
 const esc = (s) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const clamp = (n, a, b) => Math.min(Math.max(n, a), b);
+
+// ---------- Entity detection (used by the card picker) ----------
+// Whole-word matches so "program" or "diagram" don't count as "ram".
+const RAM_RE = /(?:^|[^a-z])(ram|memory|mem|swap)(?:[^a-z]|$)/;
+const CPU_RE = /(?:^|[^a-z])(cpu|processor)(?:[^a-z]|$)/;
+
+/** Returns "cpu", "ram" or null based on the entity id and friendly name. */
+const detectMode = (hass, entityId) => {
+  const st = hass?.states?.[entityId];
+  const text = `${entityId} ${st?.attributes?.friendly_name ?? ""}`.toLowerCase();
+  if (RAM_RE.test(text)) return "ram";
+  if (CPU_RE.test(text)) return "cpu";
+  return null;
+};
+
+/** True when the entity looks like a CPU / RAM usage sensor reported in percent. */
+const isUsageSensor = (hass, entityId) => {
+  if (typeof entityId !== "string" || !entityId.startsWith("sensor.")) return false;
+  const st = hass?.states?.[entityId];
+  if (!st) return false;
+  const unit = st.attributes?.unit_of_measurement;
+  if (unit !== undefined && unit !== "%") return false; // GB, °C, load average, etc.
+  return detectMode(hass, entityId) !== null;
+};
 
 class ResourceUsageCard extends HTMLElement {
   constructor() {
@@ -202,14 +229,31 @@ class ResourceUsageCard extends HTMLElement {
     return document.createElement(EDITOR_TAG);
   }
 
-  static getStubConfig(hass, entities, entityIds) {
-    const chosenEntity = entityIds && entityIds.length > 0 ? entityIds[0] : "";
-    const isRam = chosenEntity.includes("memory") || chosenEntity.includes("ram");
+  // Used by the "By card" tab. Signature: (hass, entities, entitiesFallback).
+  static getStubConfig(hass, entities, entitiesFallback) {
+    const pool = [
+      ...(Array.isArray(entities) ? entities : []),
+      ...(Array.isArray(entitiesFallback) ? entitiesFallback : []),
+      ...Object.keys(hass?.states || {}),
+    ];
+    const sensors = pool.filter((e) => typeof e === "string" && e.startsWith("sensor."));
+    const entity =
+      sensors.find((e) => isUsageSensor(hass, e)) || sensors[0] || "sensor.processor_use";
     return {
-      type: "custom:resource-usage-card",
-      entity: chosenEntity,
-      mode: isRam ? "ram" : "cpu",
-      name: isRam ? "RAM Usage" : "CPU Usage"
+      entity,
+      mode: detectMode(hass, entity) || "cpu",
+    };
+  }
+
+  // Used by the "By entity" tab (Home Assistant 2026.6+), see window.customCards below.
+  static getEntitySuggestion(hass, entityId) {
+    if (!isUsageSensor(hass, entityId)) return null;
+    return {
+      config: {
+        type: `custom:${CARD_TAG}`,
+        entity: entityId,
+        mode: detectMode(hass, entityId),
+      },
     };
   }
 
@@ -313,10 +357,15 @@ class ResourceUsageCard extends HTMLElement {
     const cl = this._threshold("comfort_low");
     const ch = this._threshold("comfort_high");
     const high = this._threshold("high");
-    
-    const lo = this._num(cfg.scale_min) ?? preset.scale_min;
-    const hi = this._num(cfg.scale_max) ?? preset.scale_max;
-    
+
+    let lo = this._num(cfg.scale_min) ?? preset.scale_min;
+    let hi = this._num(cfg.scale_max) ?? preset.scale_max;
+    if (!(hi > lo)) {
+      // Guard against a zero/negative range (would divide by zero).
+      lo = preset.scale_min;
+      hi = preset.scale_max;
+    }
+
     const pos = (x) => clamp(((x - lo) / (hi - lo)) * 100, 0, 100);
     const stops = [0, pos(low), pos(cl), pos(ch), pos(high), 100];
 
@@ -444,15 +493,11 @@ const EDITOR_LABELS = {
   scale_max: "Scale maximum",
 };
 
-const getEditorSchema = (mode) => [
-  { 
-    name: "entity", 
-    required: true, 
-    selector: { 
-      entity: { 
-        domain: "sensor"
-      } 
-    } 
+const getEditorSchema = () => [
+  {
+    name: "entity",
+    required: true,
+    selector: { entity: { domain: "sensor" } },
   },
   {
     name: "mode",
@@ -468,14 +513,9 @@ const getEditorSchema = (mode) => [
   },
   { name: "name", selector: { text: {} } },
   { name: "icon", selector: { icon: {} } },
-  { 
-    name: "compare_entities", 
-    selector: { 
-      entity: { 
-        multiple: true, 
-        domain: "sensor"
-      } 
-    } 
+  {
+    name: "compare_entities",
+    selector: { entity: { multiple: true, domain: "sensor" } },
   },
   { name: "tap_action", selector: { ui_action: {} } },
   {
@@ -537,7 +577,6 @@ class ResourceUsageCardEditor extends HTMLElement {
 
   _update() {
     if (!this._config || !this._hass) return;
-    const mode = this._config.mode || "cpu";
     if (!this._form) {
       this._form = document.createElement("ha-form");
       this._form.computeLabel = (s) => EDITOR_LABELS[s.name] || s.name;
@@ -549,21 +588,25 @@ class ResourceUsageCardEditor extends HTMLElement {
       this.appendChild(this._form);
     }
     this._form.hass = this._hass;
-    this._form.schema = getEditorSchema(mode);
+    this._form.schema = getEditorSchema();
     this._form.data = { mode: "cpu", ...this._config };
   }
 }
 
-customElements.define(CARD_TAG, ResourceUsageCard);
-customElements.define(EDITOR_TAG, ResourceUsageCardEditor);
+// Guard against double-loading (e.g. the resource being registered twice).
+if (!customElements.get(CARD_TAG)) customElements.define(CARD_TAG, ResourceUsageCard);
+if (!customElements.get(EDITOR_TAG)) customElements.define(EDITOR_TAG, ResourceUsageCardEditor);
 
 window.customCards = window.customCards || [];
-window.customCards.push({
-  type: CARD_TAG,
-  name: CARD_NAME,
-  description: "CPU or RAM utilization row with performance status, threshold bar and indicators.",
-  preview: true,
-  domains: ["sensor"],
-});
+if (!window.customCards.some((c) => c.type === CARD_TAG)) {
+  window.customCards.push({
+    type: CARD_TAG,
+    name: CARD_NAME,
+    description: "CPU or RAM utilization row with performance status, threshold bar and indicators.",
+    preview: true,
+    // Home Assistant 2026.6+: lists this card under "Community" in the "By entity" tab.
+    getEntitySuggestion: (hass, entityId) => ResourceUsageCard.getEntitySuggestion(hass, entityId),
+  });
+}
 
 console.info(`%c RESOURCE-USAGE-CARD %c v${CARD_VERSION} `, "color:white;background:#0A84FF;font-weight:700", "color:#0A84FF;background:white");
