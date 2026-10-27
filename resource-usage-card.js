@@ -6,7 +6,7 @@
 const CARD_TAG = "resource-usage-card";
 const EDITOR_TAG = "resource-usage-card-editor";
 const CARD_NAME = "Resource Usage Card";
-const CARD_VERSION = "0.3.0";
+const CARD_VERSION = "0.1.1-beta";
 
 // Fallback/Default colors used when no explicit color or zone is provided.
 const COLOR_MAP = {
