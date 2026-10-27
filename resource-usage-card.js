@@ -6,7 +6,7 @@
 const CARD_TAG = "resource-usage-card";
 const EDITOR_TAG = "resource-usage-card-editor";
 const CARD_NAME = "Resource Usage Card";
-const CARD_VERSION = "0.1.1-beta";
+const CARD_VERSION = "0.1.2-beta";
 
 // Fallback/Default colors used when no explicit color or zone is provided.
 const COLOR_MAP = {
@@ -563,6 +563,7 @@ window.customCards.push({
   name: CARD_NAME,
   description: "CPU or RAM utilization row with performance status, threshold bar and indicators.",
   preview: true,
+  domains: ["sensor"],
 });
 
-console.info(`%c RESOURCE-USAGE-CARD %c v${CARD_VERSION} `, "color:white;background:#0A84FF;font-weight:700", "color:#0A84FF;background:white");
+console.info(`%c RESOURCE-USAGE-CARD %c v0.2.3 `, "color:white;background:#0A84FF;font-weight:700", "color:#0A84FF;background:white");
