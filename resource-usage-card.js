@@ -6,7 +6,7 @@
 const CARD_TAG = "resource-usage-card";
 const EDITOR_TAG = "resource-usage-card-editor";
 const CARD_NAME = "Resource Usage Card";
-const CARD_VERSION = "0.2.0";
+const CARD_VERSION = "0.3.0";
 
 // Fallback/Default colors used when no explicit color or zone is provided.
 const COLOR_MAP = {
@@ -202,11 +202,15 @@ class ResourceUsageCard extends HTMLElement {
     return document.createElement(EDITOR_TAG);
   }
 
-  static getStubConfig(hass) {
-    const first = Object.keys(hass?.states || {}).find(
-      (id) => id.includes("cpu") || id.includes("processor") || id.includes("memory") || id.includes("ram")
-    );
-    return { entity: first || "sensor.processor_use", mode: "cpu" };
+  static getStubConfig(hass, entities, entityIds) {
+    const chosenEntity = entityIds && entityIds.length > 0 ? entityIds[0] : "";
+    const isRam = chosenEntity.includes("memory") || chosenEntity.includes("ram");
+    return {
+      type: "custom:resource-usage-card",
+      entity: chosenEntity,
+      mode: isRam ? "ram" : "cpu",
+      name: isRam ? "RAM Usage" : "CPU Usage"
+    };
   }
 
   setConfig(config) {
