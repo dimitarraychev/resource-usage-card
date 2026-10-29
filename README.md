@@ -1,3 +1,10 @@
+> [!IMPORTANT]
+> **This repository is deprecated and no longer maintained.**
+> 
+> The **Resource Usage Card** has been merged into and superseded by the **[Sensor Status Card](https://github.com/YOUR_USERNAME/sensor-status-card)**. CPU, RAM, disk usage, and other system metric features are now actively maintained there.
+> 
+> Please migrate your dashboard configuration to the Sensor Status Card for ongoing support.
+
 # Resource Usage Card for Home Assistant
 
 A sleek, single-row Lovelace custom card designed for monitoring **CPU** or **RAM** utilization. Inspired by modern minimalist room comfort cards, it features dynamic color-coded status tracking, a 5-zone segmented progress bar with an animated position indicator dot, and multi-sensor comparison support.
